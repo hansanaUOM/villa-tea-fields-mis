@@ -282,6 +282,9 @@ const navGroups = [
   { label: 'ADMINISTRATION', items: [{ name: 'Audit Logs', icon: ShieldCheck, roles: ['Owner'] }, { name: 'Settings', icon: Settings, roles: ['Owner'] }] },
 ] as const
 const staff = [{ name: 'Mira Jayasinghe', role: 'Manager', initials: 'MJ' }, { name: 'Ruwan Perera', role: 'Deputy Manager', initials: 'RP' }, { name: 'Sewwandi Silva', role: 'Housekeeper', initials: 'SS' }, { name: 'Lakmali Fernando', role: 'Housekeeper', initials: 'LF' }]
+/** Dashboard booking-channel colours: Direct, Booking.com, Airbnb, Agoda, Expedia, Trip.com, Other. */
+const CHANNEL_COLORS = ['#172B4D', '#27877D', '#5B92E5', '#D99A35', '#8E44AD', '#E07A5F', '#CAD2DE']
+const NAMED_CHANNEL_SOURCES = ['Booking.com', 'Airbnb', 'Agoda', 'Expedia', 'Trip.com', 'Walk-in Guest']
 const money = (amount: number) => `LKR ${amount.toLocaleString('en-LK')}`
 
 export function HotelManagementApp() {
@@ -383,10 +386,6 @@ export function HotelManagementApp() {
       }
     }))
     notify(status === 'Confirmed' ? 'Reservation approved · relevant staff & guest notified' : 'Reservation rejected')
-  }
-  const openNewReservation = () => {
-    setPage('Reservations')
-    setCreateReservationRequested(true)
   }
   const setTask = (index: number, state: string) => setTaskStates(current => current.map((value, itemIndex) => itemIndex === index ? state : value))
 
@@ -543,7 +542,7 @@ export function HotelManagementApp() {
         )}
       </header>
     <div className="page-content w-full min-w-0 max-w-full">
-      {page === 'Dashboard' && <Dashboard roomsReady={rooms.filter(room => room.status === 'Ready').length} roomCount={rooms.length} role={role} period={period} setPeriod={setPeriod} reservations={reservations} approve={approve} setPage={setPage} onNewReservation={openNewReservation} tasks={taskStates} setTask={setTask} />}
+      {page === 'Dashboard' && <Dashboard roomsReady={rooms.filter(room => room.status === 'Ready').length} roomCount={rooms.length} role={role} period={period} setPeriod={setPeriod} reservations={reservations} approve={approve} setPage={setPage} tasks={taskStates} setTask={setTask} />}
       {page === 'Reservations' && allowedPages.includes('Reservations') && (
         <ReservationsView
           reservations={reservations}
@@ -607,7 +606,7 @@ export function HotelManagementApp() {
   </div>
 }
 
-function Dashboard({ role, period, setPeriod, reservations, approve, setPage, onNewReservation, tasks, setTask, roomsReady, roomCount }: { roomsReady: number; roomCount: number; role: Role; period: string; setPeriod: (period: string) => void; reservations: Reservation[]; approve: (id: string, status: BookingStatus) => void; setPage: (page: string) => void; onNewReservation: () => void; tasks: string[]; setTask: (index: number, state: string) => void }) {
+function Dashboard({ role, period, setPeriod, reservations, approve, setPage, tasks, setTask, roomsReady, roomCount }: { roomsReady: number; roomCount: number; role: Role; period: string; setPeriod: (period: string) => void; reservations: Reservation[]; approve: (id: string, status: BookingStatus) => void; setPage: (page: string) => void; tasks: string[]; setTask: (index: number, state: string) => void }) {
   if (role === 'Housekeeper') {
     return <LegacyDashboard role={role} period={period} setPeriod={setPeriod} pending={0} arrivals={reservations.filter(item => item.checkIn === '2026-11-14').length} revenue={0} reservations={reservations} approve={approve} setPage={setPage} tasks={tasks} setTask={setTask} />
   }
@@ -674,7 +673,10 @@ function Dashboard({ role, period, setPeriod, reservations, approve, setPage, on
     { name: 'Direct', matches: (source: string) => source.startsWith('Direct') || source === 'Walk-in Guest' },
     { name: 'Booking.com', matches: (source: string) => source === 'Booking.com' },
     { name: 'Airbnb', matches: (source: string) => source === 'Airbnb' },
-    { name: 'Other', matches: (source: string) => !['Booking.com', 'Airbnb', 'Walk-in Guest'].includes(source) && !source.startsWith('Direct') }
+    { name: 'Agoda', matches: (source: string) => source === 'Agoda' },
+    { name: 'Expedia', matches: (source: string) => source === 'Expedia' },
+    { name: 'Trip.com', matches: (source: string) => source === 'Trip.com' },
+    { name: 'Other', matches: (source: string) => !NAMED_CHANNEL_SOURCES.includes(source) && !source.startsWith('Direct') }
   ].map(channel => {
     const count = periodReservations.filter(item => channel.matches(item.source)).length
     return { ...channel, count, share: periodReservations.length ? Math.round(count / periodReservations.length * 100) : 0 }
@@ -684,7 +686,7 @@ function Dashboard({ role, period, setPeriod, reservations, approve, setPage, on
     .sort((a, b) => a.checkIn.localeCompare(b.checkIn))
     .slice(0, 5)
 
-  return <><div className="page-heading"><div><p className="eyebrow">SATURDAY, NOVEMBER 14, 2026 <span className="live-pill"><i /> LIVE OVERVIEW</span></p><h1>{role === 'Owner' ? 'Good morning, Anushka' : role === 'Manager' ? 'Good morning, Mira' : 'Good morning, Ruwan'}</h1><p className="subheading">Here’s what’s happening at Villa Tea Fields {period.toLowerCase()}.</p></div><div className="heading-actions"><select className="period-select" aria-label="Dashboard date range" value={period} onChange={event => setPeriod(event.target.value)}><option>This week</option><option>This month</option><option>This year</option></select><button className="button primary" onClick={onNewReservation}><Plus size={16} /> New reservation</button></div></div>
+  return <><div className="page-heading"><div><p className="eyebrow">SATURDAY, NOVEMBER 14, 2026 <span className="live-pill"><i /> LIVE OVERVIEW</span></p><h1>{role === 'Owner' ? 'Good morning, Anushka' : role === 'Manager' ? 'Good morning, Mira' : 'Good morning, Ruwan'}</h1><p className="subheading">Here’s what’s happening at Villa Tea Fields {period.toLowerCase()}.</p></div><div className="heading-actions"><select className="period-select" aria-label="Dashboard date range" value={period} onChange={event => setPeriod(event.target.value)}><option>This week</option><option>This month</option><option>This year</option></select></div></div>
     <section className="stats-grid">
       <Stat icon={<Hotel />} label="OCCUPANCY RATE" value={`${occupancy}%`} note={`During ${period.toLowerCase()}`} tone="green" />
       <Stat icon={<CalendarDays />} label="TODAY’S ARRIVALS" value={String(todayArrivals).padStart(2, '0')} note={todayArrivals ? `${todayArrivals} guest check-in${todayArrivals === 1 ? '' : 's'} today` : 'No confirmed arrivals'} tone="sand" />
@@ -693,7 +695,7 @@ function Dashboard({ role, period, setPeriod, reservations, approve, setPage, on
     </section>
     <section className="dashboard-grid">
       <div className="card trend-card"><div className="card-heading"><div><h2>{canViewFinancials ? 'Revenue & occupancy' : 'Today at a glance'}</h2><p>{canViewFinancials ? `Performance for ${period.toLowerCase()}` : 'A live view of hotel operations'}</p></div><button className="text-button" onClick={() => setPage(canViewFinancials ? 'Reports & Analytics' : 'Daily Operations')}>{canViewFinancials ? 'View Reports & Analytics' : 'View report'} <ChevronRight size={14} /></button></div><div className="chart-key"><span><i className="key-green" /> Revenue <b>{money(periodRevenue)}</b></span><span><i className="key-gold" /> Occupancy % <b>{occupancy}%</b></span></div><PeriodRevenueChart values={chartValues} occupancyValues={occupancyValues} labels={buckets.map(bucket => bucket.label)} /><div className="chart-months">{buckets.map(bucket => <span key={bucket.label}>{bucket.label}</span>)}</div></div>
-      <div className="card channel-card"><div className="card-heading"><div><h2>Booking channels</h2><p>Reservations for {period.toLowerCase()}</p></div><button className="subtle-icon" aria-label={canViewFinancials ? 'View channel analytics' : 'View reservations'} onClick={() => setPage(canViewFinancials ? 'Reports & Analytics' : 'Reservations')}><MoreHorizontal size={18} /></button></div><PeriodChannelChart count={periodReservations.length} shares={channels.map(channel => channel.share)} /><div className="channel-legend">{channels.map((channel, index) => <span key={channel.name}><i className={`dot ${['direct', 'ota', 'airbnb', 'other'][index]}`} />{channel.name} <b>{channel.share}%</b></span>)}</div><div className="channel-insight"><TrendingUp size={15} /><span>{channels[0].share}% of {period.toLowerCase()} bookings are direct</span></div></div>
+      <div className="card channel-card"><div className="card-heading"><div><h2>Booking channels</h2><p>Reservations for {period.toLowerCase()}</p></div><button className="subtle-icon" aria-label={canViewFinancials ? 'View channel analytics' : 'View reservations'} onClick={() => setPage(canViewFinancials ? 'Reports & Analytics' : 'Reservations')}><MoreHorizontal size={18} /></button></div><PeriodChannelChart count={periodReservations.length} shares={channels.map(channel => channel.share)} /><div className="channel-legend">{channels.map((channel, index) => <span key={channel.name}><i className="dot" style={{ background: CHANNEL_COLORS[index] }} />{channel.name} <b>{channel.share}%</b></span>)}</div><div className="channel-insight"><TrendingUp size={15} /><span>{channels[0].share}% of {period.toLowerCase()} bookings are direct</span></div></div>
     </section>
     <section className="lower-grid"><div className="card arrivals-card"><div className="card-heading"><div><h2>Upcoming reservations</h2><p>Arrivals and booking requests · {period.toLowerCase()}</p></div><button className="text-button" onClick={() => setPage('Reservations')}>All reservations <ChevronRight size={14} /></button></div><div className="table-wrap"><table><thead><tr><th>GUEST</th><th>ROOM</th><th>CHECK IN</th><th>SOURCE</th><th>STATUS</th>{canApprove && <th />}</tr></thead><tbody>{upcoming.map(item => <tr key={item.id}><td><div className="guest-cell"><div className="guest-avatar">{item.guest.split(' ').map(part => part[0]).slice(0, 2).join('')}</div><div><strong>{item.guest}</strong><small>{item.id}</small></div></div></td><td>{item.room}</td><td>{item.checkIn === '2026-11-14' ? 'Today' : new Date(`${item.checkIn}T12:00:00`).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}</td><td>{item.source.replace('Direct · ', '')}</td><td><StatusBadge status={item.status} /></td>{canApprove && item.status === 'Pending Approval' && <td><button className="approve-mini" onClick={() => approve(item.id, 'Confirmed')}>Approve</button></td>}</tr>)}</tbody></table></div><div className="table-footer"><span>Showing <strong>{upcoming.length}</strong> of {periodReservations.length} reservations</span><button onClick={() => setPage('Reservations')}>View all reservations <span>→</span></button></div></div>
       <div className="card attention-card"><div className="card-heading"><div><h2>Needs your attention</h2><p>Items that may need a follow-up</p></div><span className="attention-count">{periodPending + 2}</span></div><div className="attention-item"><div className="attention-icon amber"><CalendarDays size={16} /></div><div><strong>{periodPending} booking requests awaiting approval</strong><span>Review and respond to booking inquiries</span></div><button onClick={() => setPage('Reservations')} aria-label="View booking requests"><ChevronRight size={16} /></button></div><div className="attention-item"><div className="attention-icon rose"><ClipboardCheck size={16} /></div><div><strong>Room 03 ready for inspection</strong><span>Housekeeping · 18 min ago</span></div><button onClick={() => setPage('Daily Operations')} aria-label="View room inspection"><ChevronRight size={16} /></button></div>{canViewFinancials && <div className="attention-item"><div className="attention-icon blue"><CreditCard size={16} /></div><div><strong>2 payments need verification</strong><span>Bank transfers · LKR 68,400</span></div><button onClick={() => setPage('Payments & Finance')} aria-label="View payment verification"><ChevronRight size={16} /></button></div>}{canApprove && <div className="ai-insight"><div><Sparkles size={15} /><strong>AI business insight</strong><span>Weekend demand is trending 18% higher. Consider reviewing rates for the final week of November.</span></div><button onClick={() => setPage('AI Business Assistant')}>Explore insight <span>→</span></button></div>}</div></section>
@@ -734,7 +736,7 @@ function PeriodRevenueChart({ values, occupancyValues, labels }: { values: numbe
   return <div className="chart-area"><div className="chart-y"><span>{money(maximum)}</span><span>{money(maximum * .75)}</span><span>{money(maximum * .5)}</span><span>{money(maximum * .25)}</span><span>LKR 0</span></div><div className="chart-plot"><div className="chart-gridline" /><div className="chart-gridline" /><div className="chart-gridline" /><div className="chart-gridline" /><svg viewBox="0 0 640 190" preserveAspectRatio="none" role="img" aria-label={`Revenue and monthly occupancy for ${labels.join(', ')}`}><defs><linearGradient id="periodRevenueFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#172B4D" stopOpacity=".15" /><stop offset="100%" stopColor="#172B4D" stopOpacity="0.01" /></linearGradient></defs><polygon points={areaPoints} fill="url(#periodRevenueFill)" /><polyline points={points} fill="none" stroke="#172B4D" strokeWidth="2.5" strokeLinejoin="round" strokeLinecap="round" /><polyline points={occupancyPoints} fill="none" stroke="#27877D" strokeWidth="2" strokeDasharray="4 4" strokeLinejoin="round" strokeLinecap="round" /></svg><div className="chart-hover"><strong>{labels[labels.length - 1]}</strong><span>{money(values[values.length - 1] || 0)} revenue · {occupancyValues[occupancyValues.length - 1] || 0}% occupancy</span></div></div></div>
 }
 function PeriodChannelChart({ count, shares }: { count: number; shares: number[] }) {
-  const colors = ['#172B4D', '#27877D', '#5B92E5', '#E5E9EF']
+  const colors = CHANNEL_COLORS
   let cumulative = 0
   const stops = shares.map((share, index) => {
     const start = cumulative
