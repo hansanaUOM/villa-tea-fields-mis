@@ -5,6 +5,8 @@ import { Activity, ArrowDownRight, ArrowUpRight, Bell, CalendarDays, Check, Chev
 import { ReservationsView, Reservation, BookingStatus, Role, ReservationAuditLog } from './reservations-view'
 import { AIFeaturesView } from './ai-features-view'
 import { PaymentsFinanceView } from './payments-finance-view'
+import { AuditLogsView } from './audit-logs-view'
+import { NotificationsPopover } from './notifications-popover'
 import { RoomsView } from './rooms-view'
 import { HotelRoom, initialRooms, toRoomCatalog } from '@/lib/rooms'
 
@@ -531,40 +533,13 @@ export function HotelManagementApp() {
           </div>
         </div>
         {showNotifications && (
-          <div className="notification-popover">
-            <div className="popover-head">
-              <strong>Notifications</strong>
-              <button
-                onClick={() => {
-                  setShowNotifications(false)
-                  notify('All caught up')
-                }}
-              >
-                Mark all read
-              </button>
-            </div>
-            <div className="notice-row">
-              <span className="notice-dot gold-dot" />
-              <div>
-                <strong>{pending} booking requests need review</strong>
-                <small>New reservations · just now</small>
-              </div>
-            </div>
-            <div className="notice-row">
-              <span className="notice-dot green-dot" />
-              <div>
-                <strong>Room 03 is ready for inspection</strong>
-                <small>Housekeeping · 18 minutes ago</small>
-              </div>
-            </div>
-            <div className="notice-row">
-              <span className="notice-dot blue-dot" />
-              <div>
-                <strong>Guest arrival: Nimal Perera</strong>
-                <small>Today at 2:00 PM</small>
-              </div>
-            </div>
-          </div>
+          <NotificationsPopover
+            onNavigate={nextPage => {
+              setPage(nextPage)
+              setShowNotifications(false)
+            }}
+            onClose={() => setShowNotifications(false)}
+          />
         )}
       </header>
     <div className="page-content w-full min-w-0 max-w-full">
@@ -613,12 +588,7 @@ export function HotelManagementApp() {
         />
       )}
       {page === 'Audit Logs' && allowedPages.includes('Audit Logs') && (
-        <AIFeaturesView
-          initialTab="audit"
-          role={role}
-          reservations={reservations}
-          notify={notify}
-        />
+        <AuditLogsView />
       )}
       {page === 'Settings' && allowedPages.includes('Settings') && <SettingsView notify={notify} />}
       {page === 'Knowledge Center' && <Knowledge />}
