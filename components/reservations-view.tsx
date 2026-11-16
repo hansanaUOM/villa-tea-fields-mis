@@ -80,6 +80,11 @@ interface ReservationsViewProps {
   notify: (msg: string) => void
   openCreateRequest: boolean
   onCreateRequestOpened: () => void
+  /** Live room catalogue (rates, names) from the Rooms module. Falls back to ROOM_DATA. */
+  roomCatalog?: RoomInfo[]
+  /** When set, opens this reservation's details (e.g. when navigating from the Room calendar). */
+  focusReservationId?: string | null
+  onFocusReservationHandled?: () => void
 }
 
 export function ReservationsView({
@@ -88,8 +93,12 @@ export function ReservationsView({
   role,
   notify,
   openCreateRequest,
-  onCreateRequestOpened
+  onCreateRequestOpened,
+  roomCatalog,
+  focusReservationId,
+  onFocusReservationHandled
 }: ReservationsViewProps) {
+  const roomList = roomCatalog ?? ROOM_DATA
   // Navigation tabs within Reservations
   const [activeTab, setActiveTab] = useState<'table' | 'availability' | 'reports'>('table')
 
@@ -157,6 +166,17 @@ export function ReservationsView({
       onCreateRequestOpened()
     }
   }, [openCreateRequest, canCreateReservation, onCreateRequestOpened])
+
+  useEffect(() => {
+    if (!focusReservationId) return
+    const target = reservations.find(item => item.id === focusReservationId)
+    if (target) {
+      setActiveTab('table')
+      setSelectedReservation(target)
+      setModalMode('details')
+    }
+    onFocusReservationHandled?.()
+  }, [focusReservationId, reservations, onFocusReservationHandled])
 
   // Switch tab back if role does not have report access
   React.useEffect(() => {
@@ -260,7 +280,7 @@ export function ReservationsView({
       return
     }
 
-    const roomDetails = ROOM_DATA.find(r => r.name === formData.room) || ROOM_DATA[0]
+    const roomDetails = roomList.find(r => r.name === formData.room) || roomList[0]
     const checkInDate = new Date(formData.checkIn)
     const checkOutDate = new Date(formData.checkOut)
     const nights = Math.max(1, Math.round((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)))
@@ -342,7 +362,7 @@ export function ReservationsView({
       return
     }
 
-    const roomDetails = ROOM_DATA.find(r => r.name === formData.room) || ROOM_DATA[0]
+    const roomDetails = roomList.find(r => r.name === formData.room) || roomList[0]
     const checkInDate = new Date(formData.checkIn)
     const checkOutDate = new Date(formData.checkOut)
     const nights = Math.max(1, Math.round((checkOutDate.getTime() - checkInDate.getTime()) / (1000 * 60 * 60 * 24)))
@@ -985,7 +1005,7 @@ export function ReservationsView({
                 </tr>
               </thead>
               <tbody>
-                {ROOM_DATA.map(room => (
+                {roomList.map(room => (
                   <tr key={room.name}>
                     <td className="p-2.5 border border-[#E5E9EF] text-left font-semibold bg-[#FAFBFC]">
                       <div className="text-[#202939]">{room.name}</div>
@@ -1245,7 +1265,7 @@ export function ReservationsView({
                     onChange={e => setFormData({ ...formData, room: e.target.value })}
                     className="w-full border border-[#E5E9EF] rounded-lg px-3 py-2 text-xs outline-none focus:border-[#172B4D]"
                   >
-                    {ROOM_DATA.map(r => (
+                    {roomList.map(r => (
                       <option key={r.name} value={r.name}>
                         {r.name} ({r.type} - {money(r.rate)}/night)
                       </option>
@@ -1321,13 +1341,13 @@ export function ReservationsView({
                 <div>
                   <span className="text-[#778196] block text-[11px]">Calculated Cost</span>
                   <span className="text-[#202939] font-medium">
-                    {Math.max(1, Math.round((new Date(formData.checkOut).getTime() - new Date(formData.checkIn).getTime()) / 86400000))} nights × {money((ROOM_DATA.find(r => r.name === formData.room) || ROOM_DATA[0]).rate)}
+                    {Math.max(1, Math.round((new Date(formData.checkOut).getTime() - new Date(formData.checkIn).getTime()) / 86400000))} nights × {money((roomList.find(r => r.name === formData.room) || roomList[0]).rate)}
                   </span>
                 </div>
                 <strong className="text-base text-[#172B4D]">
                   {money(
                     Math.max(1, Math.round((new Date(formData.checkOut).getTime() - new Date(formData.checkIn).getTime()) / 86400000)) *
-                    (ROOM_DATA.find(r => r.name === formData.room) || ROOM_DATA[0]).rate
+                    (roomList.find(r => r.name === formData.room) || roomList[0]).rate
                   )}
                 </strong>
               </div>
@@ -1694,7 +1714,7 @@ export function ReservationsView({
                     onChange={e => setFormData({ ...formData, room: e.target.value })}
                     className="w-full border border-[#E5E9EF] rounded-lg px-3 py-2 text-xs outline-none focus:border-[#172B4D]"
                   >
-                    {ROOM_DATA.map(r => (
+                    {roomList.map(r => (
                       <option key={r.name} value={r.name}>
                         {r.name} ({r.type})
                       </option>
@@ -2014,7 +2034,7 @@ export function ReservationsView({
                   onChange={e => setNewBlock({ ...newBlock, room: e.target.value })}
                   className="w-full border border-[#E5E9EF] rounded-lg px-3 py-2 text-xs outline-none focus:border-[#172B4D]"
                 >
-                  {ROOM_DATA.map(r => (
+                  {roomList.map(r => (
                     <option key={r.name} value={r.name}>{r.name} ({r.type})</option>
                   ))}
                 </select>
