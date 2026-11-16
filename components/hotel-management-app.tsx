@@ -7,6 +7,11 @@ import { AIFeaturesView } from './ai-features-view'
 import { PaymentsFinanceView } from './payments-finance-view'
 import { AuditLogsView } from './audit-logs-view'
 import { NotificationsPopover } from './notifications-popover'
+import { RoomsView } from './rooms-view'
+import { HotelRoom, initialRooms, toRoomCatalog } from '@/lib/rooms'
+
+/** Bump when the stored room shape changes so stale browser data is ignored. */
+const ROOMS_STORAGE_VERSION = 1
 
 const currentReservations: Reservation[] = [
   {
@@ -276,12 +281,6 @@ const navGroups = [
   { label: 'INTELLIGENCE', items: [{ name: 'Reports & Analytics', icon: FileText, roles: ['Owner', 'Manager'] }, { name: 'AI Business Assistant', icon: Sparkles, roles: ['Owner', 'Manager'] }] },
   { label: 'ADMINISTRATION', items: [{ name: 'Audit Logs', icon: ShieldCheck, roles: ['Owner'] }, { name: 'Settings', icon: Settings, roles: ['Owner'] }] },
 ] as const
-const rooms = [
-  { name: 'Room 01 · Single Tree Deluxe', state: 'Reserved', guest: 'Nimal Perera', detail: 'Arriving today · 2 nights', image: 'photo-1611892440504-42a792e24d32' },
-  { name: 'Room 02 · Planter\'s Vista', state: 'Occupied', guest: 'Amelia Hart', detail: 'Departs Nov 17', image: 'photo-1616594039964-ae9021a400a0' },
-  { name: 'Room 03 · Highland Heritage', state: 'Ready', guest: '—', detail: 'Next arrival Nov 15', image: 'photo-1618221195710-dd6b41faaea6' },
-  { name: 'Room 04 · Pedro Valley Suite', state: 'Reserved', guest: 'Sophie Laurent', detail: 'Arriving tomorrow · 4 nights', image: 'photo-1616486338812-3dadae4b4ace' },
-]
 const staff = [{ name: 'Mira Jayasinghe', role: 'Manager', initials: 'MJ' }, { name: 'Ruwan Perera', role: 'Deputy Manager', initials: 'RP' }, { name: 'Sewwandi Silva', role: 'Housekeeper', initials: 'SS' }, { name: 'Lakmali Fernando', role: 'Housekeeper', initials: 'LF' }]
 const money = (amount: number) => `LKR ${amount.toLocaleString('en-LK')}`
 
@@ -289,6 +288,8 @@ export function HotelManagementApp() {
   const [role, setRole] = useState<Role>('Owner')
   const [page, setPage] = useState('Dashboard')
   const [reservations, setReservations] = useState<Reservation[]>(initialReservations)
+  const [rooms, setRooms] = useState<HotelRoom[]>(initialRooms)
+  const [focusReservationId, setFocusReservationId] = useState<string | null>(null)
   const [query, setQuery] = useState('')
   const [statusFilter, setStatusFilter] = useState('All statuses')
   const [createReservationRequested, setCreateReservationRequested] = useState(false)
@@ -310,13 +311,39 @@ export function HotelManagementApp() {
           setReservations([...historicalDemoReservations.filter(item => !savedIds.has(item.id)), ...savedReservations])
         }
         if (data.taskStates) setTaskStates(data.taskStates)
+        if (data.roomsVersion === ROOMS_STORAGE_VERSION && Array.isArray(data.rooms)) {
+          const savedRooms = data.rooms as HotelRoom[]
+          setRooms(initialRooms.map(room => savedRooms.find(item => item?.id === room.id) ?? room))
+        }
       } catch {
         window.localStorage.removeItem('villa-tea-fields-demo')
       }
     }
     setSaved(true)
   }, [])
-  useEffect(() => { if (saved) window.localStorage.setItem('villa-tea-fields-demo', JSON.stringify({ reservations, taskStates })) }, [reservations, taskStates, saved])
+  useEffect(() => {
+    if (!saved) return
+    const payload = { reservations, taskStates, rooms, roomsVersion: ROOMS_STORAGE_VERSION }
+    try {
+      window.localStorage.setItem('villa-tea-fields-demo', JSON.stringify(payload))
+    } catch {
+      // Uploaded photos (data URLs) can exceed the browser storage quota. Keep everything else
+      // persisted; uploaded photos still remain in state for the current session.
+      const lightRooms = rooms.map(room => {
+        const photos = room.photos.filter(photo => !photo.src.startsWith('data:'))
+        return { ...room, photos, primaryPhotoId: photos.some(photo => photo.id === room.primaryPhotoId) ? room.primaryPhotoId : photos[0]?.id ?? null }
+      })
+      try {
+        window.localStorage.setItem('villa-tea-fields-demo', JSON.stringify({ ...payload, rooms: lightRooms }))
+      } catch { /* storage unavailable — state still works for this session */ }
+    }
+  }, [reservations, taskStates, rooms, saved])
+  const roomCatalog = useMemo(() => toRoomCatalog(rooms), [rooms])
+  const updateRoom = (updated: HotelRoom) => setRooms(current => current.map(room => room.id === updated.id ? updated : room))
+  const openReservation = (id: string) => {
+    setFocusReservationId(id)
+    setPage('Reservations')
+  }
 
   const visibleNav = navGroups.map(group => ({ ...group, items: group.items.filter(item => item.roles.some(allowedRole => allowedRole === role)) })).filter(group => group.items.length)
   const allowedPages = useMemo(() => {
@@ -516,7 +543,7 @@ export function HotelManagementApp() {
         )}
       </header>
     <div className="page-content w-full min-w-0 max-w-full">
-      {page === 'Dashboard' && <Dashboard role={role} period={period} setPeriod={setPeriod} reservations={reservations} approve={approve} setPage={setPage} onNewReservation={openNewReservation} tasks={taskStates} setTask={setTask} />}
+      {page === 'Dashboard' && <Dashboard roomsReady={rooms.filter(room => room.status === 'Ready').length} roomCount={rooms.length} role={role} period={period} setPeriod={setPeriod} reservations={reservations} approve={approve} setPage={setPage} onNewReservation={openNewReservation} tasks={taskStates} setTask={setTask} />}
       {page === 'Reservations' && allowedPages.includes('Reservations') && (
         <ReservationsView
           reservations={reservations}
@@ -525,9 +552,21 @@ export function HotelManagementApp() {
           notify={notify}
           openCreateRequest={createReservationRequested}
           onCreateRequestOpened={() => setCreateReservationRequested(false)}
+          roomCatalog={roomCatalog}
+          focusReservationId={focusReservationId}
+          onFocusReservationHandled={() => setFocusReservationId(null)}
         />
       )}
-      {page === 'Rooms' && allowedPages.includes('Rooms') && <Rooms />}
+      {page === 'Rooms' && allowedPages.includes('Rooms') && (
+        <RoomsView
+          rooms={rooms}
+          reservations={reservations}
+          role={role}
+          onUpdateRoom={updateRoom}
+          notify={notify}
+          onOpenReservation={openReservation}
+        />
+      )}
       {page === 'Guests' && allowedPages.includes('Guests') && <Guests reservations={reservations} />}
       {(page === 'Daily Operations' || page === 'Staff & Tasks') && allowedPages.includes(page) && <Operations role={role} tasks={taskStates} setTask={setTask} notify={notify} />}
       {page === 'Payments & Finance' && allowedPages.includes('Payments & Finance') && <PaymentsFinanceView reservations={reservations} onUpdateReservations={setReservations} role={role} notify={notify} />}
@@ -568,7 +607,7 @@ export function HotelManagementApp() {
   </div>
 }
 
-function Dashboard({ role, period, setPeriod, reservations, approve, setPage, onNewReservation, tasks, setTask }: { role: Role; period: string; setPeriod: (period: string) => void; reservations: Reservation[]; approve: (id: string, status: BookingStatus) => void; setPage: (page: string) => void; onNewReservation: () => void; tasks: string[]; setTask: (index: number, state: string) => void }) {
+function Dashboard({ role, period, setPeriod, reservations, approve, setPage, onNewReservation, tasks, setTask, roomsReady, roomCount }: { roomsReady: number; roomCount: number; role: Role; period: string; setPeriod: (period: string) => void; reservations: Reservation[]; approve: (id: string, status: BookingStatus) => void; setPage: (page: string) => void; onNewReservation: () => void; tasks: string[]; setTask: (index: number, state: string) => void }) {
   if (role === 'Housekeeper') {
     return <LegacyDashboard role={role} period={period} setPeriod={setPeriod} pending={0} arrivals={reservations.filter(item => item.checkIn === '2026-11-14').length} revenue={0} reservations={reservations} approve={approve} setPage={setPage} tasks={tasks} setTask={setTask} />
   }
@@ -650,7 +689,7 @@ function Dashboard({ role, period, setPeriod, reservations, approve, setPage, on
       <Stat icon={<Hotel />} label="OCCUPANCY RATE" value={`${occupancy}%`} note={`During ${period.toLowerCase()}`} tone="green" />
       <Stat icon={<CalendarDays />} label="TODAY’S ARRIVALS" value={String(todayArrivals).padStart(2, '0')} note={todayArrivals ? `${todayArrivals} guest check-in${todayArrivals === 1 ? '' : 's'} today` : 'No confirmed arrivals'} tone="sand" />
       <Stat icon={<LogOutIcon />} label="TODAY’S DEPARTURES" value={String(todayDepartures).padStart(2, '0')} note={todayDepartures ? 'Scheduled check-outs today' : 'No check-outs today'} tone="blue" />
-      <Stat icon={canViewFinancials ? <Wallet /> : <ClipboardCheck />} label={canViewFinancials ? 'REVENUE' : 'ROOMS READY'} value={canViewFinancials ? money(periodRevenue) : '2 / 4'} note={canViewFinancials ? `For ${period.toLowerCase()}` : '2 rooms need attention'} tone="purple" />
+      <Stat icon={canViewFinancials ? <Wallet /> : <ClipboardCheck />} label={canViewFinancials ? 'REVENUE' : 'ROOMS READY'} value={canViewFinancials ? money(periodRevenue) : `${roomsReady} / ${roomCount}`} note={canViewFinancials ? `For ${period.toLowerCase()}` : `${roomCount - roomsReady} room${roomCount - roomsReady === 1 ? '' : 's'} not marked Ready`} tone="purple" />
     </section>
     <section className="dashboard-grid">
       <div className="card trend-card"><div className="card-heading"><div><h2>{canViewFinancials ? 'Revenue & occupancy' : 'Today at a glance'}</h2><p>{canViewFinancials ? `Performance for ${period.toLowerCase()}` : 'A live view of hotel operations'}</p></div><button className="text-button" onClick={() => setPage(canViewFinancials ? 'Reports & Analytics' : 'Daily Operations')}>{canViewFinancials ? 'View Reports & Analytics' : 'View report'} <ChevronRight size={14} /></button></div><div className="chart-key"><span><i className="key-green" /> Revenue <b>{money(periodRevenue)}</b></span><span><i className="key-gold" /> Occupancy % <b>{occupancy}%</b></span></div><PeriodRevenueChart values={chartValues} occupancyValues={occupancyValues} labels={buckets.map(bucket => bucket.label)} /><div className="chart-months">{buckets.map(bucket => <span key={bucket.label}>{bucket.label}</span>)}</div></div>
@@ -708,7 +747,6 @@ function PeriodChannelChart({ count, shares }: { count: number; shares: number[]
 function RevenueChart(){const vals=[42,58,48,68,62,80,67,75,56,88,73,96,68,83,72,91,76,88,64,97,79,92,72,84,66,90,74,98,83,92,70,86,76,96,84,100,73,88,76,94];return <div className="chart-area"><div className="chart-y"><span>120k</span><span>90k</span><span>60k</span><span>30k</span><span>0</span></div><div className="chart-plot"><div className="chart-gridline" /><div className="chart-gridline" /><div className="chart-gridline" /><div className="chart-gridline" /><svg viewBox="0 0 640 190" preserveAspectRatio="none" role="img" aria-label="Revenue and occupancy line chart for June to November"><defs><linearGradient id="revenueFill" x1="0" x2="0" y1="0" y2="1"><stop offset="0%" stopColor="#172B4D" stopOpacity=".15" /><stop offset="100%" stopColor="#172B4D" stopOpacity="0" /></linearGradient></defs><path d="M0 145 C25 140 28 110 50 118 S90 150 108 126 S140 85 160 100 S190 132 210 95 S240 72 258 84 S290 120 310 90 S340 35 360 52 S390 92 408 62 S440 40 458 55 S490 90 510 50 S540 25 558 43 S590 62 608 30 S630 14 640 22 L640 190 L0 190Z" fill="url(#revenueFill)" /><path d="M0 145 C25 140 28 110 50 118 S90 150 108 126 S140 85 160 100 S190 132 210 95 S240 72 258 84 S290 120 310 90 S340 35 360 52 S390 92 408 62 S440 40 458 55 S490 90 510 50 S540 25 558 43 S590 62 608 30 S630 14 640 22" fill="none" stroke="#172B4D" strokeWidth="2.5" strokeLinejoin="round" /><path d="M0 158 C28 148 33 135 52 142 S90 153 108 140 S142 120 160 130 S194 148 210 132 S240 105 258 116 S290 141 310 123 S340 90 360 97 S390 122 408 106 S440 92 458 104 S490 124 510 96 S540 80 558 93 S590 105 608 84 S630 72 640 78" fill="none" stroke="#27877D" strokeWidth="2" strokeDasharray="4 4" strokeLinejoin="round" /></svg><div className="chart-hover"><strong>Nov 14</strong><span>LKR 94,200 · 78% occupancy</span></div></div></div>}
 function ChannelChart(){return <div className="donut-wrap"><div className="donut"><div className="donut-inner"><strong>28</strong><span>bookings</span></div></div><div className="donut-total"><small>THIS MONTH</small><strong>28</strong><span>reservations</span></div></div>}
 
-function Rooms(){return <><div className="page-heading"><div><p className="eyebrow">HOTEL OPERATIONS · 4 SUITES</p><h1>Rooms & inventory</h1><p className="subheading">Availability, housekeeping readiness, and guest allocations.</p></div><button className="button secondary"><CalendarDays size={16} /> Room calendar</button></div><div className="room-summary"><span><i className="room-dot occupied-dot" />Occupied <strong>1</strong></span><span><i className="room-dot ready-dot" />Ready <strong>1</strong></span><span><i className="room-dot reserved-dot" />Reserved <strong>2</strong></span><span className="room-summary-total">4 suites total</span></div><div className="room-grid">{rooms.map((room, index) => <article className="card room-card" key={room.name}><div className="room-photo" style={{ backgroundImage: `url(https://images.unsplash.com/${room.image}?auto=format&fit=crop&w=900&q=80)` }}><span className={`room-state ${room.state.toLowerCase().replaceAll(' ', '-')}`}><i />{room.state}</span><button className="room-more" aria-label={`${room.name} options`}><MoreHorizontal size={18} /></button></div><div className="room-content"><div className="room-title"><h2>{room.name}</h2><span>2–4 guests</span></div><p className="room-guest"><Users size={14} />{room.guest}</p><p className="room-detail"><CalendarDays size={14} />{room.detail}</p><div className="room-footer"><div><span>BASE RATE</span><strong>{money(index === 2 ? 26000 : index === 3 ? 28000 : 22800)} <small>/ night</small></strong></div><button className="text-button">Suite details <ChevronRight size={14} /></button></div></div></article>)}</div><div className="card room-note"><div className="attention-icon amber"><ClipboardCheck size={17} /></div><div><strong>Full-property reservation rule</strong><span>Full estate bookings block all component suites automatically to prevent overbooking.</span></div><button className="text-button">Configure <ChevronRight size={14} /></button></div></>}
 
 type GuestProfile = {
   name: string
